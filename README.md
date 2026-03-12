@@ -1,0 +1,33 @@
+# Controle de Documentos - Vencimentos
+
+Aplicativo simples em Python para controlar documentos com prazos de validade.
+
+Funcionalidades:
+- Cadastrar novo documento (tipo, número, data de validade)
+- Listar documentos cadastrados
+- Alertas: 5 dias antes e no dia do vencimento (janela de aviso)
+- Gerar relatório em PDF separando documentos vencidos e a vencer
+
+Requisitos:
+- Python 3.8+
+- dependências listadas em `requirements.txt` (agora inclui `PySide6` e `reportlab`)
+
+Instalação (PowerShell):
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+Uso:
+
+```powershell
+python app.py
+```
+
+Observações:
+- Ao cadastrar a data, use o formato `DD/MM/AAAA` (ex.: 31/12/2026). O programa armazena internamente em `YYYY-MM-DD` para ordenação e compatibilidade.
+- A interface gráfica agora utiliza `PySide6` (Qt). O campo `Número do documento` foi aumentado para facilitar entradas longas.
+- O banco é um arquivo SQLite criado como `documents.db` no mesmo diretório.
+- O relatório PDF será gerado como `relatorio_documentos.pdf` no diretório do projeto; nele as datas aparecem em `DD/MM/AAAA`.

@@ -1,0 +1,58 @@
+═══════════════════════════════════════════════════════════════════════════
+  INSTRUÇÕES DE INSTALAÇÃO - CONTROLE DDU
+═══════════════════════════════════════════════════════════════════════════
+
+PROBLEMA: Erro "api-ms-win-core-1-1-0.dll não encontrado"
+
+SOLUÇÃO:
+--------
+Este erro ocorre quando o computador não possui os componentes necessários 
+do Windows. Para resolver, instale o Microsoft Visual C++ Redistributable.
+
+PASSO A PASSO:
+--------------
+
+1. Baixe o Microsoft Visual C++ Redistributable (pacote mais recente):
+   
+   Link direto da Microsoft:
+   https://aka.ms/vs/17/release/vc_redist.x64.exe
+   
+   OU
+   
+   Acesse: https://learn.microsoft.com/pt-br/cpp/windows/latest-supported-vc-redist
+   E baixe: "Visual C++ Redistributable para Visual Studio 2015-2022 (x64)"
+
+2. Execute o arquivo baixado (vc_redist.x64.exe)
+
+3. Siga o assistente de instalação (clique em "Instalar" ou "Reparar")
+
+4. Reinicie o computador (recomendado)
+
+5. Agora execute o Controle_DDU.exe normalmente
+
+
+ALTERNATIVA (se o problema persistir):
+---------------------------------------
+
+Instale também as versões x86 (32 bits):
+https://aka.ms/vs/17/release/vc_redist.x86.exe
+
+
+REQUISITOS DO SISTEMA:
+----------------------
+- Windows 7 SP1 ou superior
+- Windows 10/11 (recomendado)
+- Microsoft Visual C++ Redistributable instalado
+
+
+OBSERVAÇÕES:
+------------
+- O Visual C++ Redistributable é um componente gratuito da Microsoft
+- É seguro instalar e necessário para muitos programas Windows
+- Não requer reinicialização obrigatória, mas é recomendado
+
+
+═══════════════════════════════════════════════════════════════════════════
+Em caso de dúvidas, contate: Lucas Pires Franco
+Desenvolvido por: Lucas Pires Franco - Engenharia de Computação
+═══════════════════════════════════════════════════════════════════════════

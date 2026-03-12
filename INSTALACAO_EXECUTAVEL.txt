@@ -1,0 +1,147 @@
+================================================================================
+                    CONTROLE DDU - VERSÃO 1.2
+           INSTRUÇÕES DE INSTALAÇÃO E USO DO EXECUTÁVEL
+================================================================================
+
+📦 CONTEÚDO DO PACOTE
+================================================================================
+- Controle_DDU.exe (55 MB aproximadamente)
+  * Executável standalone completo
+  * Inclui todas as dependências necessárias
+  * Inclui a biblioteca reportlab para geração de PDFs
+  * Inclui PySide6 para interface gráfica
+  * Inclui SQLite para banco de dados
+
+
+🚀 INSTALAÇÃO EM OUTRO COMPUTADOR
+================================================================================
+
+PASSO 1: Copiar o Executável
+-----------------------------
+1. Copie o arquivo "Controle_DDU.exe" que está na pasta "dist"
+2. Cole em qualquer pasta no computador de destino
+   Sugestão: C:\Programas\Controle_DDU\ ou Desktop
+
+PASSO 2: Primeira Execução
+---------------------------
+1. Dê um duplo clique no arquivo "Controle_DDU.exe"
+2. O Windows pode exibir um aviso de segurança (SmartScreen)
+   - Clique em "Mais informações"
+   - Depois clique em "Executar assim mesmo"
+3. Na primeira execução, o programa criará automaticamente:
+   - O banco de dados SQLite (documents.db)
+   - Todas as tabelas necessárias
+
+PASSO 3: Criar Atalho (Opcional)
+---------------------------------
+1. Clique com botão direito no "Controle_DDU.exe"
+2. Selecione "Enviar para" > "Área de trabalho (criar atalho)"
+3. Agora você pode executar o programa diretamente da área de trabalho
+
+
+⚙️ REQUISITOS DO SISTEMA
+================================================================================
+- Sistema Operacional: Windows 10 ou superior (64 bits)
+- Memória RAM: Mínimo 2 GB
+- Espaço em Disco: 100 MB livres
+- Não requer instalação de Python ou outras dependências
+- Não requer conexão com a internet para funcionar
+
+
+📂 ARQUIVOS CRIADOS PELO PROGRAMA
+================================================================================
+O programa cria automaticamente os seguintes arquivos na mesma pasta do executável:
+
+1. documents.db
+   - Banco de dados SQLite com todos os documentos cadastrados
+   - É criado automaticamente na primeira execução
+   - Contém todas as informações dos documentos, DDUs, etc.
+
+2. pmmg.png (se fornecido)
+   - Logo da PMMG usado no cabeçalho
+   - Já está embutido no executável
+
+
+🔄 BACKUP E MIGRAÇÃO DE DADOS
+================================================================================
+
+Para fazer backup dos dados:
+----------------------------
+1. Copie o arquivo "documents.db" que está na mesma pasta do executável
+2. Guarde em local seguro (pen drive, nuvem, etc.)
+
+Para restaurar dados em outro computador:
+-----------------------------------------
+1. Instale o Controle_DDU.exe no novo computador
+2. Execute o programa uma vez para criar a estrutura
+3. Feche o programa
+4. Substitua o arquivo "documents.db" pelo seu backup
+5. Abra o programa novamente - todos os dados estarão lá!
+
+
+📝 FUNCIONALIDADES DO SISTEMA
+================================================================================
+✅ Cadastro de Documentos (DDU, BO, etc.)
+✅ Controle de Validade e Alertas Automáticos
+✅ Pesquisa por Número, Natureza, Local e Observação
+✅ Marcação de Resultado Positivo
+✅ Geração de PDF Geral
+✅ Geração de PDF de DDU Positivada
+✅ Exclusão de Documentos (múltipla seleção)
+✅ Interface intuitiva e moderna
+
+
+🔧 SOLUÇÃO DE PROBLEMAS
+================================================================================
+
+Problema: O programa não abre
+-----------------------------
+Solução:
+- Verifique se o arquivo está corrompido (tamanho deve ser ~55 MB)
+- Desabilite temporariamente o antivírus
+- Execute como Administrador (botão direito > "Executar como administrador")
+
+Problema: Erro ao gerar PDF
+----------------------------
+Solução:
+- Certifique-se de que há documentos cadastrados
+- Para PDF Positivo, certifique-se de que há documentos com checkbox marcado
+- Verifique se você tem permissão de escrita na pasta de destino
+
+Problema: Dados não aparecem
+-----------------------------
+Solução:
+- Verifique se o arquivo "documents.db" está na mesma pasta do executável
+- Se moveu o executável, mova também o arquivo "documents.db"
+
+
+📞 SUPORTE
+================================================================================
+Desenvolvedor: Lucas Pires Franco
+Curso: Engenharia de Computação
+Versão: 1.2
+Data de Build: Janeiro de 2026
+
+
+🎯 NOTAS IMPORTANTES
+================================================================================
+✓ O executável é totalmente STANDALONE - não precisa de Python instalado
+✓ Todas as bibliotecas estão embutidas no executável
+✓ O banco de dados é criado automaticamente
+✓ O programa funciona offline (sem internet)
+✓ É portátil - pode ser executado de pen drive
+✓ Não faz alterações no registro do Windows
+✓ Não requer instalação formal
+
+
+🔐 SEGURANÇA
+================================================================================
+- O programa não se conecta à internet
+- Não coleta nem envia dados para servidores externos
+- Todos os dados ficam armazenados localmente no arquivo documents.db
+- Recomenda-se fazer backup regular do arquivo documents.db
+
+
+================================================================================
+                        FIM DAS INSTRUÇÕES
+================================================================================

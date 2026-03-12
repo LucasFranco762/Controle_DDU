@@ -1,0 +1,26 @@
+[
+    {
+        "numero": "03",
+        "natureza": "Tráfico de Drogas",
+        "local": "São Geraldo",
+        "observacao": "Denunciado Joãozinho",
+        "data_inicio": "01/01/2026",
+        "data_validade": "20/02/2026"
+    },
+    {
+        "numero": "01",
+        "natureza": "Tráfico de Drogas",
+        "local": "Bairro São Geraldo",
+        "observacao": "Denunciado Alan Mikael Sabino",
+        "data_inicio": "01/02/2026",
+        "data_validade": "01/04/2026"
+    },
+    {
+        "numero": "02",
+        "natureza": "Porte de arma de fogo",
+        "local": "São Cristóvão",
+        "observacao": "Zé Gota",
+        "data_inicio": "01/03/2026",
+        "data_validade": "01/08/2026"
+    }
+]

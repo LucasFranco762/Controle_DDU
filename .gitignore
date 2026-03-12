@@ -1,0 +1,15 @@
+# Pastas de compilação e executáveis
+build/
+dist/
+*.exe
+
+# Ambiente Virtual Python
+.venv/
+venv/
+ENV/
+
+# Arquivos de sistema e IDE
+__pycache__/
+.vscode/
+.idea/
+.DS_Store
