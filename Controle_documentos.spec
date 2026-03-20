@@ -1,19 +1,45 @@
 # -*- mode: python ; coding: utf-8 -*-
-
+from PyInstaller.utils.hooks import collect_all
 import os
 
-base_dir = os.path.abspath(os.path.dirname(__file__))
-icon_ico = os.path.join(base_dir, 'Icone.ico')
-icon_png = os.path.join(base_dir, 'Icone.png')
-icon_path = icon_ico if os.path.exists(icon_ico) else icon_png
+# SPECPATH é uma variável interna do PyInstaller que aponta para a pasta deste .spec
+base_dir = SPECPATH
 
+# ── Recursos visuais empacotados dentro do executável (lidos via sys._MEIPASS) ──
+datas = [
+    (os.path.join(base_dir, 'Icone.png'),       '.'),
+    (os.path.join(base_dir, 'ESCUDO PMMG.png'), '.'),
+    (os.path.join(base_dir, 'check_blue.svg'),  '.'),
+]
+
+binaries = []
+
+hiddenimports = [
+    'sqlite3',
+    'requests',
+    'requests.adapters',
+    'requests.auth',
+    'urllib3',
+    'Crypto',
+    'Crypto.Cipher',
+    'Crypto.Cipher.AES',
+    'Crypto.Util',
+    'Crypto.Util.Padding',
+]
+
+# Coleta completa de todas as dependências externas (incluindo plugins Qt, etc.)
+for pkg in ['PySide6', 'plotly', 'kaleido', 'reportlab', 'Crypto']:
+    tmp = collect_all(pkg)
+    datas         += tmp[0]
+    binaries      += tmp[1]
+    hiddenimports += tmp[2]
 
 a = Analysis(
-    ['Controle_documentos.py'],
-    pathex=[],
-    binaries=[],
-    datas=[('Icone.png', '.'), ('ESCUDO PMMG.png', '.'), ('config.json', '.')],
-    hiddenimports=[],
+    [os.path.join(base_dir, 'Controle_documentos.py')],
+    pathex=[base_dir],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -29,18 +55,18 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='Controle_documentos',
+    name='Controle_DDU',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=icon_path,
+    icon=os.path.join(base_dir, 'Icone.png'),
 )

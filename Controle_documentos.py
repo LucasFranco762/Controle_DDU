@@ -8,6 +8,7 @@ import unicodedata
 import requests
 import tempfile
 import shutil
+from urllib.parse import urlsplit
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 
@@ -67,10 +68,9 @@ def get_resource_dir():
 
 APP_DATA_DIR = get_app_data_dir()
 RESOURCE_DIR = get_resource_dir()
-SOURCE_PROJECT_ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+SOURCE_PROJECT_ROOT_DIR = os.path.abspath(os.path.dirname(__file__))
 JSON_DIR = os.path.join(APP_DATA_DIR, "json")
 DATA_JSON_PATH = os.path.join(JSON_DIR, "data.json")
-ENV_PATH = os.path.join(APP_DATA_DIR if getattr(sys, "frozen", False) else SOURCE_PROJECT_ROOT_DIR, ".env")
 DEFAULT_UPLOAD_URL = "http://localhost:3000/upload-data"
 
 DB_PATH = os.path.join(APP_DATA_DIR, "documents.db")
@@ -122,18 +122,32 @@ def load_runtime_config(config_path=CONFIG_JSON_PATH):
     if not header_lines:
         header_lines = [DEFAULT_INSTITUTIONAL_TEXT]
 
+    rodape = _normalize_config_text(config_data.get("rodapé"))
+
     return {
         "Sub-titulo": subtitle,
         "Cabecalho_PDF": header_lines,
+        "rodapé": rodape,
     }
 
 
 RUNTIME_CONFIG = load_runtime_config()
 APP_SUBTITLE = RUNTIME_CONFIG["Sub-titulo"]
 PDF_HEADER_LINES = RUNTIME_CONFIG["Cabecalho_PDF"]
+APP_FOOTER = RUNTIME_CONFIG["rodapé"]
 
-def get_env_value(key, env_path=ENV_PATH):
+def get_runtime_env_path():
+    """Retorna o caminho do .env conforme contexto de execução atual."""
+    if getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(sys.executable), ".env")
+    return os.path.join(SOURCE_PROJECT_ROOT_DIR, ".env")
+
+
+def get_env_value(key, env_path=None):
     """Lê um valor simples de arquivo .env no formato CHAVE=valor."""
+    if env_path is None:
+        env_path = get_runtime_env_path()
+
     if not os.path.exists(env_path):
         return None
 
@@ -163,11 +177,45 @@ def get_data_upload_url():
         return DEFAULT_UPLOAD_URL
 
     if configured_url.startswith("http://") or configured_url.startswith("https://"):
-        if configured_url.endswith("/upload-data"):
-            return configured_url
-        return configured_url.rstrip("/") + "/upload-data"
+        normalized_url = configured_url.rstrip("/")
+        parsed = urlsplit(normalized_url)
+
+        # Se o usuário informou uma rota explícita no .env, respeita exatamente.
+        if parsed.path and parsed.path != "/":
+            return normalized_url
+
+        return normalized_url + "/upload-data"
 
     return DEFAULT_UPLOAD_URL
+
+
+def build_upload_url_candidates():
+    """Monta lista de URLs candidatas de upload para lidar com variações de rota."""
+    primary_url = get_data_upload_url().rstrip("/")
+    candidates = [primary_url]
+
+    try:
+        parsed = urlsplit(primary_url)
+        if parsed.scheme and parsed.netloc:
+            origin = f"{parsed.scheme}://{parsed.netloc}"
+            path = (parsed.path or "").rstrip("/")
+
+            if path == "/upload-data":
+                candidates.append(origin + "/api/upload-data")
+            elif path == "/api/upload-data":
+                candidates.append(origin + "/upload-data")
+            elif path in ("", "/"):
+                candidates.append(origin + "/upload-data")
+                candidates.append(origin + "/api/upload-data")
+    except Exception:
+        pass
+
+    unique_candidates = []
+    for url in candidates:
+        if url and url not in unique_candidates:
+            unique_candidates.append(url)
+
+    return unique_candidates
 
 def normalize_text(text):
     """Remove acentos e cedilhas do texto para normalização"""
@@ -992,6 +1040,29 @@ def add_document(doc_type, doc_number, expiry_date, received_date=None, nature=N
     )
     conn.commit()
     conn.close()
+
+
+def update_document(doc_id, doc_type, doc_number, expiry_date, received_date=None, nature=None, location=None, observation=None, military_responsible=None):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "UPDATE documents SET doc_type=?, doc_number=?, expiry_date=?, received_date=?, nature=?, location=?, observation=?, military_responsible=? WHERE id=?",
+        (doc_type, doc_number, expiry_date, received_date, nature, location, observation, military_responsible, doc_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_document_by_id(doc_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT id, doc_type, doc_number, nature, location, observation, received_date, expiry_date, military_responsible FROM documents WHERE id=?",
+        (doc_id,)
+    )
+    row = c.fetchone()
+    conn.close()
+    return row
 
 
 def list_documents():
@@ -3044,9 +3115,10 @@ class RedsDialog(QDialog):
 
 
 class AddDocumentDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, initial_data=None):
         super().__init__(parent)
-        self.setWindowTitle("Cadastrar Novo Documento")
+        _is_edit = initial_data is not None
+        self.setWindowTitle("Editar Documento" if _is_edit else "Cadastrar Novo Documento")
         self.resize(500, 400)
         
         # Estilo geral do diálogo
@@ -3097,7 +3169,7 @@ class AddDocumentDialog(QDialog):
         """)
         header_layout = QVBoxLayout(header_widget)
         
-        title_label = QLabel("➕ Cadastrar Novo Documento")
+        title_label = QLabel("✏️ Editar Documento" if _is_edit else "➕ Cadastrar Novo Documento")
         title_label.setAlignment(Qt.AlignCenter)
         title_font = QFont("Arial", 14, QFont.Bold)
         title_label.setFont(title_font)
@@ -3156,7 +3228,7 @@ class AddDocumentDialog(QDialog):
         lbl_location = QLabel("Local:")
         lbl_location.setStyleSheet(label_style)
         self.input_location = QLineEdit()
-        self.input_location.setMaxLength(38)  # Limite baseado em COL_LOCAL_WIDTH
+        self.input_location.setMaxLength(60)  # Limite do campo Local
         self.input_location.setStyleSheet(input_style)
         
         lbl_observation = QLabel("Observação:")
@@ -3207,6 +3279,17 @@ class AddDocumentDialog(QDialog):
         form_layout.addWidget(self.input_expiry)
         form_layout.addWidget(lbl_military)
         form_layout.addWidget(self.input_military)
+
+        # Preencher campos em modo edição
+        if initial_data:
+            self.input_type.setText(initial_data.get("doc_type", ""))
+            self.input_number.setText(initial_data.get("doc_number", ""))
+            self.input_nature.setText(initial_data.get("nature", ""))
+            self.input_location.setText(initial_data.get("location", ""))
+            self.input_observation.setText(initial_data.get("observation", ""))
+            self.input_received.setText(initial_data.get("received_date", ""))
+            self.input_expiry.setText(initial_data.get("expiry_date", ""))
+            self.input_military.setText(initial_data.get("military_responsible", ""))
         
         layout.addWidget(form_widget)
 
@@ -3436,7 +3519,7 @@ class MainWindow(QMainWindow):
         version_layout.setContentsMargins(0, 0, 0, 0)
         version_layout.addStretch()
         
-        version_label = QLabel("Versão 1.4")
+        version_label = QLabel("Versão 1.5")
         version_label.setStyleSheet("color: #cccccc; font-size: 12px;")
         version_label.setAlignment(Qt.AlignRight | Qt.AlignBottom)
         version_layout.addWidget(version_label)
@@ -3462,6 +3545,9 @@ class MainWindow(QMainWindow):
         btn_add.clicked.connect(self.handle_add)
         btn_delete = QPushButton("🗑️ Excluir Selecionados")
         btn_delete.clicked.connect(self.handle_delete)
+        self.btn_edit = QPushButton("✏️ Editar")
+        self.btn_edit.clicked.connect(self.handle_edit)
+        self.btn_edit.setEnabled(False)
         btn_list = QPushButton("📋 Listar")
         btn_list.clicked.connect(lambda: self.handle_list())
         btn_pdf = QPushButton("📄 PDF Geral")
@@ -3478,10 +3564,10 @@ class MainWindow(QMainWindow):
                 color: white;
                 border: 2px solid #4da3ff;
                 border-radius: 6px;
-                padding: 12px 20px;
+                padding: 12px 12px;
                 font-size: 14px;
                 font-weight: bold;
-                min-width: 180px;
+                min-width: 140px;
             }
             QPushButton:hover {
                 background-color: #0056b3;
@@ -3496,10 +3582,10 @@ class MainWindow(QMainWindow):
                 color: white;
                 border: 2px solid #ff6b79;
                 border-radius: 6px;
-                padding: 12px 20px;
+                padding: 12px 12px;
                 font-size: 14px;
                 font-weight: bold;
-                min-width: 180px;
+                min-width: 140px;
             }
             QPushButton:hover {
                 background-color: #c82333;
@@ -3514,10 +3600,10 @@ class MainWindow(QMainWindow):
                 color: white;
                 border: 2px solid #59d47a;
                 border-radius: 6px;
-                padding: 12px 20px;
+                padding: 12px 12px;
                 font-size: 14px;
                 font-weight: bold;
-                min-width: 180px;
+                min-width: 140px;
             }
             QPushButton:hover {
                 background-color: #218838;
@@ -3532,10 +3618,10 @@ class MainWindow(QMainWindow):
                 color: white;
                 border: 2px solid #ffb347;
                 border-radius: 6px;
-                padding: 12px 20px;
+                padding: 12px 12px;
                 font-size: 14px;
                 font-weight: bold;
-                min-width: 180px;
+                min-width: 140px;
             }
             QPushButton:hover {
                 background-color: #e07b00;
@@ -3550,10 +3636,10 @@ class MainWindow(QMainWindow):
                 color: white;
                 border: 2px solid #72fff5;
                 border-radius: 6px;
-                padding: 12px 20px;
+                padding: 12px 12px;
                 font-size: 14px;
                 font-weight: bold;
-                min-width: 180px;
+                min-width: 140px;
             }
             QPushButton:hover {
                 background-color: #00b9ad;
@@ -3563,10 +3649,35 @@ class MainWindow(QMainWindow):
             }
         """
 
+        btn_edit_style = """
+            QPushButton {
+                background-color: #007BFF;
+                color: white;
+                border: 2px solid #4da3ff;
+                border-radius: 6px;
+                padding: 12px 12px;
+                font-size: 14px;
+                font-weight: bold;
+                min-width: 140px;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+            QPushButton:pressed {
+                background-color: #004085;
+            }
+            QPushButton:disabled {
+                background-color: #7fb3e8;
+                border: 2px solid #a8ccee;
+                color: #d0e8ff;
+            }
+        """
         btn_add.setStyleSheet(btn_style)
         btn_add.setCursor(Qt.PointingHandCursor)
         btn_delete.setStyleSheet(btn_delete_style)
         btn_delete.setCursor(Qt.PointingHandCursor)
+        self.btn_edit.setStyleSheet(btn_edit_style)
+        self.btn_edit.setCursor(Qt.PointingHandCursor)
         btn_list.setStyleSheet(btn_style)
         btn_list.setCursor(Qt.PointingHandCursor)
         btn_pdf.setStyleSheet(btn_green_style)
@@ -3578,6 +3689,7 @@ class MainWindow(QMainWindow):
 
         btn_layout.addWidget(btn_add)
         btn_layout.addWidget(btn_delete)
+        btn_layout.addWidget(self.btn_edit)
         btn_layout.addWidget(btn_list)
         btn_layout.addWidget(btn_pdf)
         btn_layout.addWidget(btn_dashboard)
@@ -3862,15 +3974,16 @@ class MainWindow(QMainWindow):
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.table.cellDoubleClicked.connect(self.handle_locked_result_pos_double_click)
         self._locked_result_edit_in_progress = False
+        self.table.itemSelectionChanged.connect(self.update_edit_button_state)
 
         apply_table_column_behavior(self.table, "main_table", local_elastic=True)
         
         table_layout.addWidget(self.table)
         
         # ===== RODAPÉ =====
-        footer_label = QLabel("Desenvolvido por Lucas Pires Franco - Engenharia de Computação")
+        footer_label = QLabel(APP_FOOTER)
         footer_label.setAlignment(Qt.AlignCenter)
-        footer_label.setStyleSheet("font-size: 12px; color: #888888; margin-top: 5px;")
+        footer_label.setStyleSheet("font-size: 12px; color: #222222; margin-top: 5px;")
         
         # ===== LAYOUT PRINCIPAL =====
         main_layout = QVBoxLayout(central)
@@ -3893,6 +4006,79 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(1000, self.check_alerts)
 
     
+    def update_edit_button_state(self):
+        selected_rows = {item.row() for item in self.table.selectedItems()}
+        self.btn_edit.setEnabled(len(selected_rows) == 1)
+
+    def handle_edit(self):
+        selected_rows = {item.row() for item in self.table.selectedItems()}
+        if len(selected_rows) != 1:
+            QMessageBox.warning(self, "Atenção", "Selecione exatamente um documento para editar.")
+            return
+
+        row = next(iter(selected_rows))
+        item = self.table.item(row, 1)  # Coluna 1 (Tipo) armazena doc_id em UserRole
+        if not item:
+            return
+        doc_id = item.data(Qt.UserRole)
+        if doc_id is None:
+            return
+
+        doc = get_document_by_id(doc_id)
+        if not doc:
+            QMessageBox.warning(self, "Atenção", "Documento não encontrado no banco de dados.")
+            return
+
+        # (id, doc_type, doc_number, nature, location, observation, received_date, expiry_date, military_responsible)
+        _, doc_type, doc_number, nature, location, observation, received_date, expiry_date, military_responsible = doc
+
+        initial_data = {
+            "doc_type": doc_type or "",
+            "doc_number": doc_number or "",
+            "nature": nature or "",
+            "location": location or "",
+            "observation": observation or "",
+            "received_date": _format_date_to_br(received_date),
+            "expiry_date": _format_date_to_br(expiry_date),
+            "military_responsible": military_responsible or "",
+        }
+
+        dlg = AddDocumentDialog(self, initial_data=initial_data)
+        if dlg.exec() != QDialog.Accepted:
+            return
+
+        data = dlg.get_data()
+        dtype = data.get("doc_type", "")
+        dnum = data.get("doc_number", "")
+        nature_new = data.get("nature", "")
+        location_new = data.get("location", "")
+        observation_new = data.get("observation", "")
+        rdate = data.get("received_date", "")
+        edate = data.get("expiry_date", "")
+        military_new = data.get("military_responsible", "")
+
+        if not dtype or not dnum or not edate or not rdate:
+            QMessageBox.warning(self, "Atenção", "Preencha todos os campos obrigatórios.")
+            return
+
+        try:
+            ed = datetime.datetime.strptime(edate, "%d/%m/%Y").date()
+            rd = datetime.datetime.strptime(rdate, "%d/%m/%Y").date()
+        except Exception:
+            QMessageBox.critical(self, "Erro", "Formato de data inválido. Use DD/MM/AAAA")
+            return
+
+        update_document(
+            doc_id, dtype, dnum,
+            ed.strftime("%Y-%m-%d"), rd.strftime("%Y-%m-%d"),
+            nature=nature_new or None,
+            location=location_new or None,
+            observation=observation_new or None,
+            military_responsible=military_new or None,
+        )
+        QMessageBox.information(self, "Sucesso", "Documento atualizado com sucesso.")
+        self.refresh_list()
+
     def handle_add(self):
         dlg = AddDocumentDialog(self)
         if dlg.exec() != QDialog.Accepted:
@@ -4518,13 +4704,20 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def handle_update_site(self, _checked=False):
-        # Confirmar com o usuário antes de gerar o arquivo
+        # Determinar se documentos vencidos serão incluídos
+        export_expired = self.chk_export_expired.isChecked() if hasattr(self, "chk_export_expired") else False
+
+        if export_expired:
+            descricao_exportacao = "Serão enviados todos os documentos (válidos e vencidos)."
+        else:
+            descricao_exportacao = "Serão enviados somente os documentos com validade em vigor.\nDocumentos vencidos NÃO serão incluídos."
+
         confirmado = confirm_sim_nao(
             self,
             "Confirmar Exportação",
-            "Deseja gerar e enviar o arquivo data.json para o servidor?"
+            f"Deseja gerar e enviar o arquivo data.json para o servidor?\n\n{descricao_exportacao}"
         )
-        
+
         if not confirmado:
             return
         
@@ -4534,9 +4727,16 @@ class MainWindow(QMainWindow):
             temp_dir = tempfile.mkdtemp()
             file_path = os.path.join(temp_dir, "data.json")
             
-            # Verificar se deve exportar documentos vencidos
-            export_expired = self.chk_export_expired.isChecked() if hasattr(self, "chk_export_expired") else False
             total, valid_count, expired_count = export_data_json(path=file_path, export_expired=export_expired)
+
+            # Impedir envio de arquivo vazio
+            if total == 0:
+                QMessageBox.warning(
+                    self,
+                    "Nenhum documento",
+                    "Não há documentos para exportar com os critérios selecionados."
+                )
+                return
             
             # Ler arquivo e criptografar
             with open(file_path, "rb") as f:
@@ -4556,33 +4756,52 @@ class MainWindow(QMainWindow):
             headers = {
                 "x-auth-token": "DDU_CONTROLE_SECRET_TOKEN_12345"
             }
-            upload_url = get_data_upload_url()
-            server_base_url = upload_url.replace("/upload-data", "")
-            
-            response = requests.post(
-                upload_url,
-                data=encrypted_data,
-                headers=headers,
-                timeout=10
-            )
+            upload_candidates = build_upload_url_candidates()
+            response = None
+            used_upload_url = upload_candidates[0] if upload_candidates else get_data_upload_url()
+
+            for candidate_url in upload_candidates:
+                used_upload_url = candidate_url
+                response = requests.post(
+                    candidate_url,
+                    data=encrypted_data,
+                    headers=headers,
+                    timeout=10
+                )
+
+                # Se sucesso, encerra. Se 404, tenta próximo candidato.
+                if response.status_code in [200, 201] or response.status_code != 404:
+                    break
             
             # Verificar se o envio foi bem-sucedido
-            if response.status_code in [200, 201]:
+            if response is not None and response.status_code in [200, 201]:
+                if export_expired:
+                    detalhe_envio = f"{total} documento(s) enviado(s) ({valid_count} válido(s) e {expired_count} vencido(s))."
+                else:
+                    detalhe_envio = f"{total} documento(s) válido(s) enviado(s). ({expired_count} vencido(s) não incluído(s))"
                 QMessageBox.information(
                     self,
                     "Sucesso",
-                    "Arquivo data.json foi enviado com sucesso!"
+                    f"Arquivo data.json foi enviado com sucesso!\n\n{detalhe_envio}"
                 )
             else:
+                response_status = response.status_code if response is not None else "sem resposta"
+                response_detail = ""
+                if response is not None:
+                    detail_text = (response.text or "").strip()
+                    if detail_text:
+                        response_detail = f"\n\nResposta do servidor: {detail_text[:300]}"
                 QMessageBox.critical(
                     self,
                     "Erro",
-                    f"Falha ao enviar arquivo. Status: {response.status_code}"
+                    f"Falha ao enviar arquivo. Status: {response_status}\n"
+                    f"URL utilizada: {used_upload_url}{response_detail}"
                 )
         
         except requests.exceptions.ConnectionError:
             upload_url = get_data_upload_url()
-            server_base_url = upload_url.replace("/upload-data", "")
+            parsed = urlsplit(upload_url)
+            server_base_url = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else upload_url
             QMessageBox.critical(
                 self,
                 "Erro de Conexão",
