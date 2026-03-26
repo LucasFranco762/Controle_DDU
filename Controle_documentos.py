@@ -12,6 +12,16 @@ from urllib.parse import urlsplit
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 
+if getattr(sys, 'frozen', False):
+    # Executando como .exe
+    application_path = sys._MEIPASS
+else:
+    # Executando como script
+    application_path = os.path.dirname(os.path.abspath(__file__))
+
+# Exemplo de uso:
+# caminho_do_asset = os.path.join(application_path, "customtkinter", "assets", "themes", "blue", "checkbox_checked.png")
+
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -21,6 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
     QLabel,
     QLineEdit,
+    QTextEdit,
     QPushButton,
     QDialog,
     QVBoxLayout,
@@ -38,9 +49,12 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
     QScrollBar,
+    QSizePolicy,
 )
 from PySide6.QtCore import QTimer, Qt, QEvent, QLocale, QDate, QPoint
-from PySide6.QtGui import QFont, QPixmap, QColor, QIcon, QPalette, QTextCharFormat, QPainter, QPolygon
+from PySide6.QtGui import QFont, QPixmap, QColor, QIcon, QPalette, QTextCharFormat, QPainter, QPolygon, QFontMetrics, QTextOption
+
+import PySide6.QtSvg
 
 try:
     from reportlab.lib.pagesizes import A4, landscape
@@ -387,6 +401,7 @@ def show_date_picker_dialog(parent, initial_date=None, show_month_year_label=Fal
 
     if month_year_label is not None:
         def update_month_year_label():
+            if month_year_label is None: return
             months_pt = [
                 "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
                 "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
@@ -805,6 +820,160 @@ PDF_COL_RESULTADO_POS_WIDTH = 2.5 # Coluna: Resultado Positivo
 # ========================================
 
 
+def _wrap_text_lines(text, metrics, max_width_px):
+    """Quebra texto em linhas que cabem em max_width_px (por palavras)."""
+    normalized = " ".join((text or "").replace("\r", " ").replace("\n", " ").split())
+    if not normalized:
+        return []
+
+    words = normalized.split(" ")
+    lines = []
+    current = ""
+
+    for word in words:
+        candidate = word if not current else f"{current} {word}"
+        if metrics.horizontalAdvance(candidate) <= max_width_px:
+            current = candidate
+            continue
+
+        if current:
+            lines.append(current)
+            current = word
+        else:
+            # Palavra maior que a largura: quebra por caracteres.
+            chunk = ""
+            for ch in word:
+                cand = chunk + ch
+                if metrics.horizontalAdvance(cand) <= max_width_px:
+                    chunk = cand
+                else:
+                    if chunk:
+                        lines.append(chunk)
+                    chunk = ch
+            current = chunk
+
+    if current:
+        lines.append(current)
+
+    return lines
+
+
+def _clamp_observation_two_lines(text, metrics, max_width_px):
+    """Retorna (texto_2_linhas, is_truncated). Segunda linha recebe '...' se truncar."""
+    lines = _wrap_text_lines(text, metrics, max_width_px)
+    if not lines:
+        return "", False
+
+    if len(lines) <= 2:
+        return "\n".join(lines[:2]), False
+
+    first = lines[0]
+    second_raw = lines[1]
+    ell = "..."
+    max_second = max(0, max_width_px - metrics.horizontalAdvance(ell))
+
+    # Garante que a 2ª linha + "..." caiba.
+    trimmed = second_raw
+    while trimmed and metrics.horizontalAdvance(trimmed) > max_second:
+        trimmed = trimmed[:-1]
+    trimmed = trimmed.rstrip()
+    second = f"{trimmed}{ell}" if trimmed else ell
+    return f"{first}\n{second}", True
+
+
+class ReadMoreObservationDialog(QDialog):
+    def __init__(self, ddu_number, natureza, observation_text, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("LER MAIS")
+        self.setModal(True)
+        self.resize(650, 520)
+
+        self.setStyleSheet("""
+            QDialog { background-color: #f5f5f5; }
+            QLabel { color: #003366; }
+        """)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(12, 12, 12, 12)
+        root.setSpacing(10)
+
+        # ===== Cabeçalho (fixo) =====
+        header = QWidget()
+        header.setStyleSheet("""
+            QWidget {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #003366, stop:1 #004080);
+                border-radius: 10px;
+                padding: 12px;
+            }
+        """)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(12, 10, 12, 10)
+
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+
+        title = QLabel(f"DDU Nº {ddu_number}")
+        title.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
+
+        subtitle = QLabel(str(natureza or "").strip())
+        subtitle.setStyleSheet("color: #e0e0e0; font-size: 13px;")
+
+        title_box.addWidget(title)
+        title_box.addWidget(subtitle)
+
+
+        header_layout.addLayout(title_box)
+        header_layout.addStretch()
+
+        root.addWidget(header)
+
+        # ===== Corpo (com scroll somente aqui) =====
+        body = QTextEdit()
+        body.setReadOnly(True)
+        body.setPlainText(observation_text or "")
+        body.setStyleSheet("""
+            QTextEdit {
+                background-color: white;
+                border: 1px solid #d0d0d0;
+                border-radius: 10px;
+                padding: 12px;
+                font-size: 13px;
+                color: #222222;
+            }
+        """)
+        body.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        root.addWidget(body, 1)
+
+        # ===== Rodapé (fixo) =====
+        footer = QWidget()
+        footer_layout = QHBoxLayout(footer)
+        footer_layout.setContentsMargins(0, 0, 0, 0)
+
+        btn_close = QPushButton("Fechar")
+        btn_close.setCursor(Qt.PointingHandCursor)
+        btn_close.setFixedWidth(140)
+        btn_close.setStyleSheet("""
+            QPushButton {
+                background-color: #007BFF;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 10px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #0056b3; }
+            QPushButton:pressed { background-color: #004085; }
+        """)
+        btn_close.clicked.connect(self.reject)
+
+        footer_layout.addStretch()
+        footer_layout.addWidget(btn_close)
+        footer_layout.addStretch()
+
+        root.addWidget(footer)
+
+
 def wrap_text_in_paragraph(text, font_size=8, font_name='Helvetica'):
     """
     Converte texto em um objeto Paragraph do ReportLab para quebra automática de linha.
@@ -1117,7 +1286,7 @@ def export_data_json(path=DATA_JSON_PATH, export_expired=True):
                 continue
         
         # Contar se está vencido ou válido
-        is_expired = ed and ed < today
+        is_expired = ed is not None and ed < today
         
         if is_expired:
             expired_count += 1
@@ -2166,7 +2335,6 @@ class ListDocumentsDialog(QDialog):
                 QTableWidgetItem((dnum or "").upper()),
                 QTableWidgetItem((nature or "").upper()),
                 QTableWidgetItem((location or "").upper()),
-                QTableWidgetItem((observation or "").upper()),
                 QTableWidgetItem(rd_display),
                 QTableWidgetItem(ed_display),
                 QTableWidgetItem(status),
@@ -2174,13 +2342,108 @@ class ListDocumentsDialog(QDialog):
                 QTableWidgetItem(self._get_result_label(result_pos))
             ]
             
-            # Começar a partir da coluna 1 (depois do botão Info)
-            for col, item in enumerate(items, start=1):
+            # Colunas 1..4 (Tipo, Número, Natureza, Local)
+            for col, item in enumerate(items[:4], start=1):
+                item.setBackground(bg_color)
+                table.setItem(row, col, item)
+
+            # Coluna 5 (Observação): 2 linhas + "LER MAIS" se truncar
+            self._set_observation_cell(
+                table=table,
+                row=row,
+                col=5,
+                ddu_number=(dnum or "").strip(),
+                natureza=(nature or "").strip(),
+                observation_text=(observation or ""),
+                bg_color=bg_color,
+            )
+
+            # Colunas 6..10 (Início, Validade, Status, Militar, Resultado)
+            for col, item in enumerate(items[4:], start=6):
                 item.setBackground(bg_color)
                 table.setItem(row, col, item)
         
         for table in self.tables.values():
             table.setSortingEnabled(True)
+
+    def _set_observation_cell(self, table, row, col, ddu_number, natureza, observation_text, bg_color):
+        full_text = (observation_text or "").strip()
+        # Item “invisível” mantém ordenação/clipboard e compatibilidade.
+        item = QTableWidgetItem(full_text)
+        item.setBackground(bg_color)
+        table.setItem(row, col, item)
+
+        col_width = max(80, int(table.columnWidth(col)))
+        content_width = max(40, col_width - 20)
+        metrics = QFontMetrics(table.font())
+        clamped, truncated = _clamp_observation_two_lines(full_text, metrics, content_width)
+
+        container = QWidget()
+        container.setStyleSheet(f"background-color: {bg_color.name()};")
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(6, 2, 6, 2)
+        layout.setSpacing(8)
+
+        preview = QTextEdit()
+        preview.setReadOnly(True)
+        preview.setFrameShape(QFrame.NoFrame)
+        preview.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        preview.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        preview.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        preview.setPlainText(clamped)
+        # Remove padding interno para não “descer” o texto e evitar corte.
+        preview.setStyleSheet("""
+            QTextEdit {
+                background: transparent;
+                color: #222222;
+                font-size: 12px;
+                padding: 0px;
+                margin: 0px;
+            }
+        """)
+        preview.setContentsMargins(0, 0, 0, 0)
+        preview.setViewportMargins(0, 0, 0, 0)
+        try:
+            preview.document().setDocumentMargin(0)
+        except Exception:
+            pass
+        preview.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        layout.addWidget(preview, 1)
+
+        if truncated:
+            content_width_btn = max(40, col_width - 70)
+            clamped_btn, _ = _clamp_observation_two_lines(full_text, metrics, content_width_btn)
+            preview.setPlainText(clamped_btn)
+
+            btn = QPushButton("LER MAIS")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #007BFF;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 6px 10px;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                QPushButton:hover { background-color: #0056b3; }
+                QPushButton:pressed { background-color: #004085; }
+            """)
+            btn.clicked.connect(
+                lambda _checked=False, num=ddu_number, nat=natureza, obs=full_text: ReadMoreObservationDialog(
+                    num, nat, obs, parent=self
+                ).exec()
+            )
+            layout.addWidget(btn, 0, Qt.AlignRight | Qt.AlignVCenter)
+
+        table.setCellWidget(row, col, container)
+
+        needed_h = (metrics.lineSpacing() * 2) + 16
+        current_h = table.rowHeight(row)
+        if current_h < needed_h:
+            table.setRowHeight(row, needed_h)
+        preview.setFixedHeight(needed_h - 2)
 
     def _build_tab_rows_for_pdf(self, tab_key):
         docs = list_documents()
@@ -3233,9 +3496,22 @@ class AddDocumentDialog(QDialog):
         
         lbl_observation = QLabel("Observação:")
         lbl_observation.setStyleSheet(label_style)
-        self.input_observation = QLineEdit()
-        self.input_observation.setMaxLength(48)  # Limite baseado em COL_OBSERVACAO_WIDTH
-        self.input_observation.setStyleSheet(input_style)
+        self.input_observation = QTextEdit()
+        self.input_observation.setPlaceholderText("Digite as observações (sem limite de caracteres)")
+        self.input_observation.setStyleSheet("""
+            QTextEdit {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 4px;
+                font-size: 13px;
+                background-color: white;
+                margin: 2px 0px 6px 0px;
+            }
+            QTextEdit:focus {
+                border: 2px solid #007BFF;
+            }
+        """)
+        self.input_observation.setMinimumHeight(90)
         
         lbl_received = QLabel("Data de Início:")
         lbl_received.setStyleSheet(label_style)
@@ -3286,7 +3562,7 @@ class AddDocumentDialog(QDialog):
             self.input_number.setText(initial_data.get("doc_number", ""))
             self.input_nature.setText(initial_data.get("nature", ""))
             self.input_location.setText(initial_data.get("location", ""))
-            self.input_observation.setText(initial_data.get("observation", ""))
+            self.input_observation.setPlainText(initial_data.get("observation", "") or "")
             self.input_received.setText(initial_data.get("received_date", ""))
             self.input_expiry.setText(initial_data.get("expiry_date", ""))
             self.input_military.setText(initial_data.get("military_responsible", ""))
@@ -3353,7 +3629,7 @@ class AddDocumentDialog(QDialog):
             "doc_number": self.input_number.text().strip(),
             "nature": self.input_nature.text().strip(),
             "location": self.input_location.text().strip(),
-            "observation": self.input_observation.text().strip(),
+            "observation": self.input_observation.toPlainText().strip(),
             "received_date": self.input_received.text().strip(),
             "expiry_date": self.input_expiry.text().strip(),
             "military_responsible": self.input_military.text().strip(),
@@ -3519,8 +3795,8 @@ class MainWindow(QMainWindow):
         version_layout.setContentsMargins(0, 0, 0, 0)
         version_layout.addStretch()
         
-        version_label = QLabel("Versão 1.5")
-        version_label.setStyleSheet("color: #cccccc; font-size: 12px;")
+        version_label = QLabel("Versão 1.6")
+        version_label.setStyleSheet("color: #cccccc; font-size: 14px;")
         version_label.setAlignment(Qt.AlignRight | Qt.AlignBottom)
         version_layout.addWidget(version_label)
         
@@ -4342,7 +4618,15 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 2, QTableWidgetItem((dnum or "").upper()))
             self.table.setItem(row, 3, QTableWidgetItem((nature or "").upper()))
             self.table.setItem(row, 4, QTableWidgetItem((location or "").upper()))
-            self.table.setItem(row, 5, QTableWidgetItem((observation or "").upper()))
+            # Observação: 2 linhas na célula + "LER MAIS" se truncar
+            self._set_observation_cell(
+                table=self.table,
+                row=row,
+                col=5,
+                ddu_number=(dnum or "").strip(),
+                natureza=(nature or "").strip(),
+                observation_text=(observation or ""),
+            )
 
             rd_display = rd.strftime("%d/%m/%Y") if isinstance(rd, datetime.date) else ""
             ed_display = ed.strftime("%d/%m/%Y") if isinstance(ed, datetime.date) else str(edate)
@@ -4419,10 +4703,99 @@ class MainWindow(QMainWindow):
                     it = self.table.item(row, col)
                     if it:
                         it.setBackground(bg_color)
+                # Aplica cor de fundo no widget da observação (col 5), se existir
+                obs_widget = self.table.cellWidget(row, 5)
+                if obs_widget:
+                    obs_widget.setStyleSheet(f"QWidget {{ background-color: {bg_color.name()}; }}")
             except Exception:
                 pass
 
         self.filter_table()
+
+    def _set_observation_cell(self, table, row, col, ddu_number, natureza, observation_text):
+        """Renderiza Observação como 2 linhas + reticências + botão 'LER MAIS'."""
+        full_text = (observation_text or "").strip()
+        # Mantém item para filtro/ordenação (mesmo que o widget seja exibido).
+        item = QTableWidgetItem(full_text)
+        table.setItem(row, col, item)
+
+        # Largura disponível da coluna (tira padding aproximado do widget)
+        col_width = max(80, int(table.columnWidth(col)))
+        # Reserva espaço pro botão apenas quando houver truncamento; como ainda não sabemos,
+        # calcula um preview com uma reserva conservadora pequena.
+        content_width = max(40, col_width - 20)
+
+        metrics = QFontMetrics(table.font())
+        clamped, truncated = _clamp_observation_two_lines(full_text, metrics, content_width)
+
+        container = QWidget()
+        container.setStyleSheet("QWidget { background: transparent; }")
+        container_layout = QHBoxLayout(container)
+        container_layout.setContentsMargins(6, 2, 6, 2)
+        container_layout.setSpacing(8)
+
+        preview = QTextEdit()
+        preview.setReadOnly(True)
+        preview.setFrameShape(QFrame.NoFrame)
+        preview.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        preview.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        preview.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        preview.setPlainText(clamped)
+        # Remove padding interno para não “descer” o texto e evitar corte.
+        preview.setStyleSheet("""
+            QTextEdit {
+                background: transparent;
+                color: #222222;
+                font-size: 12px;
+                padding: 0px;
+                margin: 0px;
+            }
+        """)
+        preview.setContentsMargins(0, 0, 0, 0)
+        preview.setViewportMargins(0, 0, 0, 0)
+        try:
+            preview.document().setDocumentMargin(0)
+        except Exception:
+            pass
+        preview.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        container_layout.addWidget(preview, 1)
+
+        if truncated:
+            # Recalcula preview reservando espaço do botão para não “empurrar” o texto.
+            content_width_btn = max(40, col_width - 70)
+            clamped_btn, _ = _clamp_observation_two_lines(full_text, metrics, content_width_btn)
+            preview.setPlainText(clamped_btn)
+
+            btn = QPushButton("LER MAIS")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #007BFF;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 6px 10px;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                QPushButton:hover { background-color: #0056b3; }
+                QPushButton:pressed { background-color: #004085; }
+            """)
+            btn.clicked.connect(
+                lambda _checked=False, num=ddu_number, nat=natureza, obs=full_text: ReadMoreObservationDialog(
+                    num, nat, obs, parent=self
+                ).exec()
+            )
+            container_layout.addWidget(btn, 0, Qt.AlignRight | Qt.AlignVCenter)
+
+        table.setCellWidget(row, col, container)
+
+        # Garante altura para 2 linhas sem estourar a célula
+        needed_h = (metrics.lineSpacing() * 2) + 16
+        current_h = table.rowHeight(row)
+        if current_h < needed_h:
+            table.setRowHeight(row, needed_h)
+        preview.setFixedHeight(needed_h - 2)
     
     def filter_table(self):
         """Filtra a tabela baseado no texto da pesquisa (Número, Natureza, Local, Observação)"""
@@ -4578,6 +4951,8 @@ class MainWindow(QMainWindow):
             return
 
         data = dlg.get_data()
+        if data is None:
+            return
         result_type = data.get("result_type", 1)
         
         doc_info = get_document_info(doc_id)
